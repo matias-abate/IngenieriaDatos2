@@ -19,7 +19,8 @@ async def connect_to_neo4j(app: FastAPI):
         settings.neo4j_uri,
         auth=(settings.neo4j_user, settings.neo4j_password)
     )
-    app.state.neo = neo_driver      
+    app.state.neo = neo_driver
+  
 
 async def startup(app: FastAPI):
     await connect_to_mongo(app)

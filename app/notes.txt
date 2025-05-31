@@ -1,2 +1,5 @@
 correr la app -> uvicorn app.main:app --reload
 
+importar endpoint a postman -> http://127.0.0.1:8000/openapi.json
+
+
