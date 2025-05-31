@@ -43,3 +43,15 @@ class Post(BaseModel):
         json_encoders = {ObjectId: str}
         allow_population_by_field_name = True
         arbitrary_types_allowed = True                    # ← NUEVO
+
+
+class Message(BaseModel):
+    id: PyObjectId | None = Field(alias="_id", default=None)
+    sender_id: PyObjectId
+    receiver_id: PyObjectId
+    content: str
+    sent_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Config:
+        json_encoders = {ObjectId: str}
+        allow_population_by_field_name = True

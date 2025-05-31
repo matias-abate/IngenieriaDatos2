@@ -1,75 +1,113 @@
 # app/routers/messages.py
+
 from typing import List
-
-from fastapi import APIRouter, HTTPException, status
-
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from app.models import Message
-from app.storage import messages, users
+from app.repositories.messages_repo import MessagesRepo
+from app.repositories.users_repo import UsersRepo
 
 router = APIRouter(prefix="/messages", tags=["messages"])
 
+def get_messages_repo(request: Request) -> MessagesRepo:
+    return MessagesRepo(request.app.state.mongo)
 
-# ---------- Helpers internos ----------
-def _check_user_exists(user_id: str) -> None:
-    if user_id not in users:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="User not found")
+def get_users_repo(request: Request) -> UsersRepo:
+    return UsersRepo(request.app.state.mongo)
 
-
-# ---------- Endpoints ----------
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=Message)
-def send_message(msg: Message):
+async def send_message(
+    msg: Message,
+    repo: MessagesRepo = Depends(get_messages_repo),
+    users_repo: UsersRepo = Depends(get_users_repo)
+):
     """
-    Crea y guarda un mensaje `msg` en la “base” in-memory.
-    El cliente debe enviar `sender_id`, `receiver_id` y `body`.
+    Envía un mensaje de sender_id a receiver_id y lo guarda en MongoDB.
+    Body JSON debe incluir: { "sender_id": "<oid>", "receiver_id": "<oid>", "content": "..." }
+    Retorna el Message guardado.
     """
-    _check_user_exists(msg.sender_id)
-    _check_user_exists(msg.receiver_id)
+    # 1) Validar que ambos usuarios existan en MongoDB
+    try:
+        await users_repo.get(str(msg.sender_id))
+        await users_repo.get(str(msg.receiver_id))
+    except HTTPException:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-    messages[msg.id] = msg
-    return msg
-
+    # 2) Guardar el mensaje
+    sent_msg = await repo.send(msg)
+    return sent_msg
 
 @router.get("/inbox/{user_id}", response_model=List[Message])
-def list_inbox(user_id: str):
-    """Mensajes recibidos por `user_id` (orden cronológico asc)."""
-    _check_user_exists(user_id)
-    return sorted(
-        (m for m in messages.values() if m.receiver_id == user_id),
-        key=lambda m: m.sent_at,
-    )
+async def list_inbox(
+    user_id: str,
+    skip: int = 0,
+    limit: int = 50,
+    repo: MessagesRepo = Depends(get_messages_repo),
+    users_repo: UsersRepo = Depends(get_users_repo)
+):
+    """
+    Obtiene los mensajes recibidos por user_id. 
+    Parámetros query: skip (número a saltar), limit (límite).
+    """
+    # 1) Verificar existencia de user_id
+    try:
+        await users_repo.get(user_id)
+    except HTTPException:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
+    # 2) Devolver los mensajes de la bandeja de entrada
+    return await repo.list_inbox(user_id, skip, limit)
 
 @router.get("/sent/{user_id}", response_model=List[Message])
-def list_sent(user_id: str):
-    """Mensajes enviados por `user_id`."""
-    _check_user_exists(user_id)
-    return sorted(
-        (m for m in messages.values() if m.sender_id == user_id),
-        key=lambda m: m.sent_at,
-    )
+async def list_sent(
+    user_id: str,
+    skip: int = 0,
+    limit: int = 50,
+    repo: MessagesRepo = Depends(get_messages_repo),
+    users_repo: UsersRepo = Depends(get_users_repo)
+):
+    """
+    Obtiene los mensajes enviados por user_id.
+    Parámetros: skip, limit.
+    """
+    # 1) Verificar existencia de user_id
+    try:
+        await users_repo.get(user_id)
+    except HTTPException:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
+    # 2) Devolver los mensajes enviados
+    return await repo.list_sent(user_id, skip, limit)
 
 @router.get("/conversation/{user_a}/{user_b}", response_model=List[Message])
-def conversation(user_a: str, user_b: str):
+async def get_conversation(
+    user_a: str,
+    user_b: str,
+    skip: int = 0,
+    limit: int = 50,
+    repo: MessagesRepo = Depends(get_messages_repo),
+    users_repo: UsersRepo = Depends(get_users_repo)
+):
     """
-    Devuelve el chat entre `user_a` y `user_b`, combinando ida y vuelta.
+    Obtiene el histórico de mensajes entre user_a y user_b (bidireccional).
+    Parámetros: skip, limit.
     """
-    _check_user_exists(user_a)
-    _check_user_exists(user_b)
+    # 1) Verificar existencia de ambos usuarios
+    try:
+        await users_repo.get(user_a)
+        await users_repo.get(user_b)
+    except HTTPException:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-    return sorted(
-        (
-            m
-            for m in messages.values()
-            if {m.sender_id, m.receiver_id} == {user_a, user_b}
-        ),
-        key=lambda m: m.sent_at,
-    )
-
+    # 2) Devolver la conversación
+    return await repo.get_conversation(user_a, user_b, skip, limit)
 
 @router.delete("/{msg_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_message(msg_id: str):
+async def delete_message(
+    msg_id: str,
+    repo: MessagesRepo = Depends(get_messages_repo)
+):
     """
-    Elimina (si existe) el mensaje con id `msg_id`.
+    Elimina el mensaje con id msg_id (si existe) en MongoDB.
     """
-    messages.pop(msg_id, None)
+    await repo.delete(msg_id)
+    return
