@@ -1,19 +1,39 @@
 # app/routers/friends.py
-from fastapi import APIRouter, HTTPException
-from app.storage import friends, users     # dicts in-memory
-from app.models import User
+from fastapi import APIRouter, Depends, Request, status
+from app.repositories.friends_repo import FriendsRepo
+from app.repositories.users_repo   import UsersRepo
+from app.repositories.friends_graph_repo import FriendsGraphRepo  # futuro
 
-router = APIRouter(prefix="/friends", tags=["friends"])   # ← IMPORTANTE
+router = APIRouter(prefix="/friends", tags=["friends"])
 
-@router.post("/{user_id}/{friend_id}", status_code=201)
-def add_friend(user_id: str, friend_id: str):
-    if user_id not in users or friend_id not in users:
-        raise HTTPException(404, "User not found")
+def repo(request: Request) -> FriendsRepo:
+    return FriendsRepo(request.app.state.mongo)
 
-    friends[user_id].append(friend_id)
-    friends[friend_id].append(user_id)      # relación mutua
+def users_repo(request: Request) -> UsersRepo:
+    return UsersRepo(request.app.state.mongo)
+
+def graph_repo(request: Request) -> FriendsGraphRepo:
+    return FriendsGraphRepo(request.app.state.neo)   # futuro
+
+@router.post("/{uid}/{fid}", status_code=status.HTTP_201_CREATED)
+async def add_friend(uid: str, fid: str,
+                     fr: FriendsRepo = Depends(repo),
+                     ur: UsersRepo  = Depends(users_repo)):
+                     # gr: FriendsGraphRepo = Depends(graph_repo)  # futuro
+    await ur.get(uid)   # valida existencia
+    await ur.get(fid)
+    await fr.add(uid, fid)
+    # await gr.add(uid, fid)  # fase 2
     return {"detail": "ok"}
 
-@router.get("/{user_id}", response_model=list[str])
-def list_friends(user_id: str):
-    return friends.get(user_id, [])
+@router.delete("/{uid}/{fid}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_friend(uid: str, fid: str,
+                        fr: FriendsRepo = Depends(repo)):
+                        # gr: FriendsGraphRepo = Depends(graph_repo)  # futuro
+    await fr.remove(uid, fid)
+    # await gr.remove(uid, fid)
+    return
+
+@router.get("/{uid}", response_model=list[str])
+async def list_friends(uid: str, fr: FriendsRepo = Depends(repo)):
+    return await fr.list(uid)
