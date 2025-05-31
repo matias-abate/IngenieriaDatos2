@@ -38,3 +38,13 @@ class FriendsGraphRepo:
         async with self.driver.session() as s:
             result = await s.run(cypher, uid=uid, limit=limit)
             return [rec["id"] async for rec in result]
+
+    # ── NUEVO: lista los amigos directos de un usuario ────────────
+    async def friends(self, uid: str) -> list[str]:
+        cypher = """
+        MATCH (u:User {id:$uid})-[:FRIENDS_WITH]->(f:User)
+        RETURN f.id AS id
+        """
+        async with self.driver.session() as s:
+            result = await s.run(cypher, uid=uid)
+            return [record["id"] async for record in result]
