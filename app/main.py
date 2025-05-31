@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from app.core.database import connect_to_mongo, close_mongo_connection
 from app.routers.users import router as users_router
+from app.routers.posts import router as posts_router
+
 # (otros routers desactivados si aún no están listos)
 
 app = FastAPI(title="Mini-Red-Social")
@@ -20,4 +22,5 @@ async def root():
     return {"status": "ok"}
 
 app.include_router(users_router)
+app.include_router(posts_router)
 
