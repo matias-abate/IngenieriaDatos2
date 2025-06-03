@@ -2,6 +2,8 @@
 from bson import ObjectId
 from pydantic import BaseModel, Field
 from datetime import datetime
+from typing import Optional
+from app.utils.security import hash_password
 
 class PyObjectId(ObjectId):
     @classmethod
@@ -23,15 +25,18 @@ class PyObjectId(ObjectId):
 
 # ---------- MODELOS ----------
 class User(BaseModel):
-    id: PyObjectId | None = Field(alias="_id", default=None)
+    id: Optional[PyObjectId] = Field(alias="_id", default=None)
     username: str
     email: str
+    hashed_password: str
 
     class Config:
         json_encoders = {ObjectId: str}
         allow_population_by_field_name = True
-        arbitrary_types_allowed = True                    # ← NUEVO
+        arbitrary_types_allowed = True
 
+    def create_password_hash(self, password: str):
+        self.hashed_password = hash_password(password)
 
 class Post(BaseModel):
     id: PyObjectId | None = Field(alias="_id", default=None)
