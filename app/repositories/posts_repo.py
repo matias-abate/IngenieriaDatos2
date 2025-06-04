@@ -5,6 +5,8 @@ from datetime import datetime
 from fastapi import HTTPException
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.models import Post
+from typing import List
+
 
 class PostsRepo:
     def __init__(self, db: AsyncIOMotorDatabase):
@@ -65,3 +67,12 @@ class PostsRepo:
             .limit(limit)
         )
         return [Post(**d) async for d in cursor]
+    
+    async def list_posts(self) -> List[dict]:
+        cursor = self.col.find({})  # Puedes agregar filtros si quieres
+        posts = []
+        async for doc in cursor:
+            # Convertimos _id a id (string) para que Pydantic lo entienda
+            doc["id"] = str(doc["_id"])
+            posts.append(doc)
+        return posts

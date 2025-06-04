@@ -1,28 +1,24 @@
-from bson import ObjectId
-from fastapi import HTTPException
+# app/repositories/users_repo.py
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from app.models import User
+from bson import ObjectId
 
 class UsersRepo:
     def __init__(self, db: AsyncIOMotorDatabase):
         self.col = db["users"]
 
-    async def create(self, user: User) -> User:
-        payload = user.dict(by_alias=True, exclude_none=True)   # ✅
-        result = await self.col.insert_one(payload)             # Mongo crea _id
-        payload["_id"] = result.inserted_id
-        return User(**payload)
+    async def get_by_username(self, username: str) -> dict | None:
+        doc = await self.col.find_one({"username": username})
+        if doc:
+            doc["id"] = str(doc["_id"])
+            return doc
+        return None
 
-    async def get(self, user_id: str) -> User:
-        try:
-            key = ObjectId(user_id)
-        except Exception:
-            raise HTTPException(400, "Invalid ObjectId")        # 400 ≈ bad ID
+    async def create_user(self, user_data: dict) -> dict:
+        """
+        Inserta un usuario YA CON hashed_password en la colección.
+        user_data debe contener al menos: { "username", "email", "hashed_password" }.
+        """
+        result = await self.col.insert_one(user_data)
+        return {"inserted_id": result.inserted_id}
 
-        doc = await self.col.find_one({"_id": key})
-        if not doc:
-            raise HTTPException(404, "User not found")
-        return User(**doc)
-
-    async def delete(self, user_id: str) -> None:
-        await self.col.delete_one({"_id": ObjectId(user_id)})
+    # Podrías tener: get(user_id), update(), delete(), etc.
